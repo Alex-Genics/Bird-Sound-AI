@@ -1,0 +1,6 @@
+{
+  "name": "BirdVoice AI - Bioacoustic Bird Identification",
+  "description": "Record or upload wild avian sounds and identify 6,521 bird species with confidence scores, STFT bioacoustic spectrograms, and vocalization profiles powered by BirdNET.",
+  "requestFramePermissions": ["microphone", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
