@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { AnalysisResponse, SpeciesPrediction, TimelineSegment } from '../types/birdnet';
 import { SpectrogramViewer } from './SpectrogramViewer';
+import { BorderGlow } from './BorderGlow';
 import { formatTime } from '../utils/audio';
 
 interface ResultsViewProps {
@@ -53,10 +54,15 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#1c2e22] pb-4">
         <button
           onClick={onReset}
-          className="flex items-center gap-2 rounded-lg border border-[#23442e] bg-[#122017] px-3.5 py-2 text-xs font-medium text-[#d3e5d7] hover:bg-[#1a2e21] hover:text-[#f1f7f2] transition-colors"
+          className="group flex items-center gap-2.5 rounded-lg border border-[#23442e] bg-[#122017] px-3.5 py-2 text-xs font-medium text-[#d3e5d7] hover:bg-[#1a2e21] hover:text-[#f1f7f2] transition-colors"
         >
-          <RotateCcw className="h-3.5 w-3.5 text-[#10b981]" />
-          <span>Analyze Another Sound</span>
+          <img
+            src="/hummingbird.webp"
+            alt=""
+            className="h-5 w-auto object-contain transition-transform group-hover:scale-110"
+            aria-hidden="true"
+          />
+          <span>Listen Again with Hummingbird</span>
         </button>
 
         <div className="flex items-center gap-3 text-xs font-mono text-[#769380]">
@@ -84,16 +90,46 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
           </div>
           <button
             onClick={onReset}
-            className="rounded-lg bg-[#10b981] px-5 py-2.5 text-xs font-semibold text-black hover:bg-[#34d399] transition-colors"
+            className="inline-flex items-center gap-2 rounded-lg bg-[#10b981] px-5 py-2.5 text-xs font-semibold text-black hover:bg-[#34d399] transition-colors"
           >
-            Try Another Recording
+            <img src="/hummingbird.webp" alt="" className="h-4 w-auto object-contain" aria-hidden="true" />
+            <span>Try Another Recording</span>
           </button>
         </div>
       )}
 
-      {/* Primary Detection Hero Card */}
+      {/* Primary Detection Hero Card with React Bits BorderGlow */}
       {top && (
-        <div className="relative overflow-hidden rounded-2xl border border-[#23442e] bg-[#0c1510] p-6 sm:p-8 shadow-2xl">
+        <BorderGlow
+          edgeSensitivity={30}
+          glowColor="160 84 60"
+          backgroundColor="#0c1510"
+          borderRadius={24}
+          glowRadius={42}
+          glowIntensity={1.2}
+          coneSpread={28}
+          animated={true}
+          colors={['#10b981', '#34d399', '#059669']}
+          className="w-full shadow-2xl"
+        >
+          <div className="p-6 sm:p-8">
+            {/* Hummingbird Recording Listener Reference Banner */}
+            <div className="mb-4 pb-3 border-b border-[#1c2e22]/70 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2.5 text-[#8ca393]">
+                <img
+                  src="/hummingbird.webp"
+                  alt="BirdVoice Recording Listener"
+                  className="h-5 w-auto object-contain"
+                />
+                <span className="font-mono text-[11px] text-[#708c79]">
+                  BirdVoice Listener Analyzed
+                </span>
+              </div>
+              <span className="text-[11px] font-mono text-[#10b981]">
+                BirdNET Neural Prediction
+              </span>
+            </div>
+
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-6">
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-xs font-mono text-[#10b981]">
@@ -208,7 +244,8 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
               </span>
             </div>
           )}
-        </div>
+          </div>
+        </BorderGlow>
       )}
 
       {/* Bioacoustic Spectrogram & Audio Playback */}

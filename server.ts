@@ -15,12 +15,15 @@ import { createServer as createViteServer } from 'vite';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = parseInt(process.env.PORT || '3000', 10);
+// In this environment, nginx listens on 8080 and proxies traffic to port 3000.
+// The Node/Express application MUST always bind to port 3000.
+const PORT = 3000;
 const IS_DEV = process.env.NODE_ENV !== 'production';
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Storage for uploaded audio recordings
 const uploadDir = path.join(__dirname, 'tmp_uploads');
@@ -225,42 +228,71 @@ print(json.dumps(info))
 });
 
 // Audio analysis endpoint
-app.post('/api/analyze', upload.single('audio'), async (req: Request, res: Response) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No audio file provided in request.' });
-  }
-
-  const uploadedPath = req.file.path;
-  const minConfidence = req.body.min_confidence ? parseFloat(req.body.min_confidence) : 0.05;
-  const latitude = req.body.latitude ? parseFloat(req.body.latitude) : undefined;
-  const longitude = req.body.longitude ? parseFloat(req.body.longitude) : undefined;
-  const week = req.body.week ? parseInt(req.body.week, 10) : undefined;
-
-  try {
-    const analysisResult = await runBirdNetInference(
-      uploadedPath,
-      minConfidence,
-      latitude,
-      longitude,
-      week
-    );
-    res.json(analysisResult);
-  } catch (error: any) {
-    console.error('Inference error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Error occurred during BirdNET neural analysis'
+app.post(
+  '/api/analyze',
+  (req: Request, res: Response, next) => {
+    upload.single('audio')(req, res, (err: any) => {
+      if (err) {
+        console.error('Multer file upload error:', err);
+        return res.status(400).json({
+          success: false,
+          error: err.message || 'Audio file upload error',
+        });
+      }
+      next();
     });
-  } finally {
-    // Delete temporary upload safely
-    if (fs.existsSync(uploadedPath)) {
-      try {
-        fs.unlinkSync(uploadedPath);
-      } catch (err) {
-        console.error('Failed to unlink uploaded temp file:', err);
+  },
+  async (req: Request, res: Response) => {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No audio file provided in request.' });
+    }
+
+    const uploadedPath = req.file.path;
+    const minConfidence = req.body.min_confidence ? parseFloat(req.body.min_confidence) : 0.05;
+    const latitude = req.body.latitude ? parseFloat(req.body.latitude) : undefined;
+    const longitude = req.body.longitude ? parseFloat(req.body.longitude) : undefined;
+    const week = req.body.week ? parseInt(req.body.week, 10) : undefined;
+
+    try {
+      const analysisResult = await runBirdNetInference(
+        uploadedPath,
+        minConfidence,
+        latitude,
+        longitude,
+        week
+      );
+      res.json(analysisResult);
+    } catch (error: any) {
+      console.error('Inference error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Error occurred during BirdNET neural analysis',
+      });
+    } finally {
+      // Delete temporary upload safely
+      if (fs.existsSync(uploadedPath)) {
+        try {
+          fs.unlinkSync(uploadedPath);
+        } catch (err) {
+          console.error('Failed to unlink uploaded temp file:', err);
+        }
       }
     }
   }
+);
+
+// Fallback for unmatched /api routes - guarantee JSON response, never HTML
+app.all('/api/*', (_req: Request, res: Response) => {
+  res.status(404).json({ success: false, error: 'API endpoint not found' });
+});
+
+// API-specific error handler
+app.use('/api', (err: any, _req: Request, res: Response, _next: any) => {
+  console.error('API Error intercepted:', err);
+  res.status(err.status || 500).json({
+    success: false,
+    error: err.message || 'Internal API server error',
+  });
 });
 
 // -------------------------------------------------------------

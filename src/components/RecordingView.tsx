@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Mic, MicOff, Upload, Play, Sparkles, MapPin, Sliders, AlertCircle, RefreshCw, FileAudio } from 'lucide-react';
+import { HummingbirdRecordControl } from './HummingbirdRecordControl';
 import { AudioVisualizer } from './AudioVisualizer';
+import BorderGlow from './BorderGlow';
 import { SampleRecording } from '../types/birdnet';
 import { formatTime } from '../utils/audio';
 
@@ -155,70 +157,41 @@ export const RecordingView: React.FC<RecordingViewProps> = ({
         </div>
       </div>
 
-      {/* Main Action Box */}
-      <div className="relative rounded-2xl border border-[#1f3826] bg-[#0c140f] p-6 sm:p-8 shadow-2xl">
-        {activeTab === 'mic' ? (
-          <div className="flex flex-col items-center space-y-6">
-            {/* Visualizer when recording */}
-            {isRecording ? (
-              <div className="w-full space-y-4">
+      {/* Main Action Box with React Bits BorderGlow */}
+      <BorderGlow
+        edgeSensitivity={30}
+        glowColor="160 84 60"
+        backgroundColor="#0c140f"
+        borderRadius={24}
+        glowRadius={38}
+        glowIntensity={1.1}
+        coneSpread={26}
+        animated={false}
+        colors={['#10b981', '#34d399', '#059669']}
+        className="w-full"
+      >
+        <div className="p-6 sm:p-8">
+          {activeTab === 'mic' ? (
+          <div className="flex flex-col items-center">
+            {/* CENTRAL RECORDING CONTROL: Isolated Hummingbird */}
+            <HummingbirdRecordControl
+              isRecording={isRecording}
+              recordingSeconds={recordingSeconds}
+              analyser={analyser}
+              isAnalyzing={isAnalyzing}
+              onStartRecording={onStartRecording}
+              onStopRecording={onStopRecording}
+              onCancelRecording={onCancelRecording}
+            />
+
+            {/* During live recording, supplementary real-time bioacoustic frequency readout */}
+            {isRecording && (
+              <div className="w-full mt-6 pt-4 border-t border-[#1c2e22]/70 animate-fade-in">
                 <AudioVisualizer
                   analyser={analyser}
                   isRecording={isRecording}
                   recordingSeconds={recordingSeconds}
                 />
-                <div className="flex items-center justify-center gap-4">
-                  <button
-                    onClick={onStopRecording}
-                    className="flex items-center gap-2 rounded-xl bg-red-600 px-6 py-3 text-sm font-semibold text-white shadow-lg hover:bg-red-500 transition-colors"
-                  >
-                    <span className="h-2.5 w-2.5 rounded-sm bg-white" />
-                    <span>Stop & Analyze ({recordingSeconds.toFixed(1)}s)</span>
-                  </button>
-                  <button
-                    onClick={onCancelRecording}
-                    className="rounded-xl border border-[#23442e] bg-[#122017] px-4 py-3 text-xs font-medium text-[#8ca393] hover:text-[#f1f7f2] hover:bg-[#1a2e21] transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : isAnalyzing ? (
-              /* Analyzing state */
-              <div className="py-12 text-center space-y-4">
-                <div className="relative mx-auto flex h-20 w-20 items-center justify-center">
-                  <div className="absolute inset-0 rounded-full border-2 border-[#10b981]/20 border-t-[#10b981] animate-spin" />
-                  <Sparkles className="h-8 w-8 text-[#10b981] animate-pulse" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="text-base font-semibold text-[#f1f7f2]">
-                    Running BirdNET Neural Inference...
-                  </h3>
-                  <p className="text-xs text-[#708c79]">
-                    Extracting spectrogram harmonics · Classifying 6,521 avian sound profiles
-                  </p>
-                </div>
-              </div>
-            ) : (
-              /* Idle recording button */
-              <div className="flex flex-col items-center py-6 space-y-5 text-center">
-                <button
-                  onClick={onStartRecording}
-                  className="group relative flex h-28 w-28 items-center justify-center rounded-full bg-[#14261b] border-2 border-[#10b981]/50 shadow-[0_0_30px_rgba(16,185,129,0.15)] hover:border-[#10b981] hover:scale-105 active:scale-95 transition-all"
-                  aria-label="Start recording bird sound"
-                >
-                  <span className="absolute inset-0 rounded-full bg-[#10b981]/10 group-hover:bg-[#10b981]/20 transition-colors" />
-                  <Mic className="h-10 w-10 text-[#10b981] group-hover:scale-110 transition-transform" />
-                </button>
-
-                <div className="space-y-1">
-                  <span className="text-sm font-semibold text-[#f1f7f2]">
-                    Click to Start Listening
-                  </span>
-                  <p className="text-xs text-[#769380] max-w-sm">
-                    Hold phone or microphone toward the singing bird. We recommend recording 3 to 10 seconds of clear vocalization.
-                  </p>
-                </div>
               </div>
             )}
           </div>
@@ -353,7 +326,8 @@ export const RecordingView: React.FC<RecordingViewProps> = ({
             </div>
           </div>
         )}
-      </div>
+        </div>
+      </BorderGlow>
     </div>
   );
 };

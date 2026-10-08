@@ -66,6 +66,22 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
               BirdNET research is published in <em>Ecological Informatics</em>. Special thanks to the thousands of wildlife sound recordists worldwide contributing to bioacoustic monitoring.
             </p>
           </section>
+
+          <section className="space-y-1.5 pt-2 border-t border-[#1a2d20]">
+            <h4 className="text-xs font-semibold text-[#f1f7f2]">Media & Visual Attribution</h4>
+            <p className="text-[11px] text-[#708c79]">
+              Hummingbird photograph by Jonathan Rodgers,{' '}
+              <a
+                href="https://commons.wikimedia.org/wiki/File:Hummingbird_hovering_in_flight.jpg"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[#10b981] underline hover:text-[#34d399] inline-flex items-center gap-0.5"
+              >
+                Wikimedia Commons <ExternalLink className="h-2.5 w-2.5 inline" />
+              </a>
+              , CC BY-SA 2.5.
+            </p>
+          </section>
         </div>
 
         {/* Footer */}

@@ -42,16 +42,22 @@ def main():
         from backend.audio_analyzer import convert_to_standard_wav
         from backend.birdnet_service import engine
 
-        # Convert to 48kHz WAV if not already
-        wav_path = str(audio_file)
-        is_temp = False
-        if audio_file.suffix.lower() != ".wav":
-            import tempfile
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-            tmp.close()
-            convert_to_standard_wav(str(audio_file), tmp.name, 48000)
+        # Convert to standardized 48kHz mono 16-bit WAV using FFmpeg
+        import tempfile
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+        tmp.close()
+        
+        converted = convert_to_standard_wav(str(audio_file), tmp.name, 48000)
+        if converted and os.path.exists(tmp.name) and os.path.getsize(tmp.name) > 100:
             wav_path = tmp.name
             is_temp = True
+        else:
+            wav_path = str(audio_file)
+            is_temp = False
+            try:
+                os.remove(tmp.name)
+            except Exception:
+                pass
 
         result = engine.run_inference(
             wav_path,

@@ -147,8 +147,10 @@ export function App() {
       }
       setAudioBlob(blob);
       setAudioUrl(undefined);
-      setCurrentFileName(`Mic_Recording_${new Date().toLocaleTimeString().replace(/:/g, '-')}.wav`);
-      await processAudio(blob, 'mic_recording.wav');
+      const ext = blob.type.includes('webm') ? 'webm' : (blob.type.includes('ogg') ? 'ogg' : 'wav');
+      const recFilename = `Mic_Recording_${new Date().toLocaleTimeString().replace(/:/g, '-')}.${ext}`;
+      setCurrentFileName(recFilename);
+      await processAudio(blob, recFilename);
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to finish recording audio.');
     }
@@ -216,42 +218,70 @@ export function App() {
       formData.append('longitude', longitude.toString());
     }
 
-    try {
-      const response = await fetch('/api/analyze', {
-        method: 'POST',
-        body: formData,
-      });
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await fetch('/api/analyze', {
+          method: 'POST',
+          body: formData,
+        });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || errorData.detail || `Server error (${response.status})`);
+        const responseText = await response.text();
+        let result: any = null;
+        try {
+          result = JSON.parse(responseText);
+        } catch {
+          // If response is the proxy warmup HTML, wait and retry
+          if (responseText.includes('<!doctype') || responseText.includes('<html')) {
+            if (attempt < maxAttempts) {
+              console.log(`Backend server warmup detected (attempt ${attempt}/${maxAttempts}). Retrying in 1.5s...`);
+              await new Promise((resolve) => setTimeout(resolve, 1500));
+              continue;
+            }
+          }
+          console.error('Non-JSON response received from /api/analyze:', responseText.slice(0, 300));
+          throw new Error(
+            `Analysis service is warming up or temporarily unavailable. Please try again in a few seconds.`
+          );
+        }
+
+        if (!response.ok || (result && result.success === false)) {
+          throw new Error(
+            result?.error || result?.detail || `Analysis server error (${response.status})`
+          );
+        }
+
+        const analysisResult: AnalysisResponse = result;
+        setAnalysisResult(analysisResult);
+        setView('results');
+
+        // Save to local history if species detected
+        if (result.top_prediction) {
+          const newHistoryItem: HistoryItem = {
+            id: `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            timestamp: new Date().toISOString(),
+            duration: result.duration,
+            topSpecies: result.top_prediction.common_name,
+            scientificName: result.top_prediction.scientific_name,
+            confidence: result.top_prediction.confidence,
+            audioFileName: filename,
+            diversityScore: result.soundscape_diversity_score,
+            predictionsCount: result.species_detected_count,
+            response: result,
+          };
+          setHistory((prev) => [newHistoryItem, ...prev.slice(0, 49)]);
+        }
+        return; // Success, exit retry loop
+      } catch (err: any) {
+        if (attempt >= maxAttempts) {
+          console.error('Analysis failed:', err);
+          setErrorMessage(err.message || 'Error occurred while running BirdNET neural analysis. Please verify your connection.');
+        }
+      } finally {
+        if (attempt >= maxAttempts) {
+          setIsAnalyzing(false);
+        }
       }
-
-      const result: AnalysisResponse = await response.json();
-      setAnalysisResult(result);
-      setView('results');
-
-      // Save to local history if species detected
-      if (result.top_prediction) {
-        const newHistoryItem: HistoryItem = {
-          id: `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          timestamp: new Date().toISOString(),
-          duration: result.duration,
-          topSpecies: result.top_prediction.common_name,
-          scientificName: result.top_prediction.scientific_name,
-          confidence: result.top_prediction.confidence,
-          audioFileName: filename,
-          diversityScore: result.soundscape_diversity_score,
-          predictionsCount: result.species_detected_count,
-          response: result,
-        };
-        setHistory((prev) => [newHistoryItem, ...prev.slice(0, 49)]);
-      }
-    } catch (err: any) {
-      console.error('Analysis failed:', err);
-      setErrorMessage(err.message || 'Error occurred while running BirdNET neural analysis. Please verify your connection.');
-    } finally {
-      setIsAnalyzing(false);
     }
   };
 
