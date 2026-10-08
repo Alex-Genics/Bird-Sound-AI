@@ -219,74 +219,75 @@ export function App() {
     }
 
     const maxAttempts = 3;
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        const response = await fetch('/api/analyze', {
-          method: 'POST',
-          body: formData,
-        });
-
-        const responseText = await response.text();
-        let result: any = null;
+    try {
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-          result = JSON.parse(responseText);
-        } catch {
-          // If response is the proxy warmup HTML, wait and retry
-          if (responseText.includes('<!doctype') || responseText.includes('<html')) {
-            if (attempt < maxAttempts) {
-              console.log(`Backend server warmup detected (attempt ${attempt}/${maxAttempts}). Retrying in 1.5s...`);
-              await new Promise((resolve) => setTimeout(resolve, 1500));
-              continue;
+          const response = await fetch('/api/analyze', {
+            method: 'POST',
+            body: formData,
+          });
+
+          const responseText = await response.text();
+          let result: any = null;
+          try {
+            result = JSON.parse(responseText);
+          } catch {
+            // If response is the proxy warmup HTML, wait and retry
+            if (responseText.includes('<!doctype') || responseText.includes('<html')) {
+              if (attempt < maxAttempts) {
+                console.log(`Backend server warmup detected (attempt ${attempt}/${maxAttempts}). Retrying in 1.5s...`);
+                await new Promise((resolve) => setTimeout(resolve, 1500));
+                continue;
+              }
             }
+            console.error('Non-JSON response received from /api/analyze:', responseText.slice(0, 300));
+            throw new Error(
+              `Analysis service is warming up or temporarily unavailable. Please try again in a few seconds.`
+            );
           }
-          console.error('Non-JSON response received from /api/analyze:', responseText.slice(0, 300));
-          throw new Error(
-            `Analysis service is warming up or temporarily unavailable. Please try again in a few seconds.`
-          );
-        }
 
-        if (!response.ok || (result && result.success === false)) {
-          throw new Error(
-            result?.error || result?.detail || `Analysis server error (${response.status})`
-          );
-        }
+          if (!response.ok || (result && result.success === false)) {
+            throw new Error(
+              result?.error || result?.detail || `Analysis server error (${response.status})`
+            );
+          }
 
-        const analysisResult: AnalysisResponse = result;
-        setAnalysisResult(analysisResult);
-        setView('results');
+          const analysisResult: AnalysisResponse = result;
+          setAnalysisResult(analysisResult);
+          setView('results');
 
-        // Save to local history if species detected
-        if (result.top_prediction) {
-          const newHistoryItem: HistoryItem = {
-            id: `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-            timestamp: new Date().toISOString(),
-            duration: result.duration,
-            topSpecies: result.top_prediction.common_name,
-            scientificName: result.top_prediction.scientific_name,
-            confidence: result.top_prediction.confidence,
-            audioFileName: filename,
-            diversityScore: result.soundscape_diversity_score,
-            predictionsCount: result.species_detected_count,
-            response: result,
-          };
-          setHistory((prev) => [newHistoryItem, ...prev.slice(0, 49)]);
-        }
-        return; // Success, exit retry loop
-      } catch (err: any) {
-        if (attempt >= maxAttempts) {
-          console.error('Analysis failed:', err);
-          setErrorMessage(err.message || 'Error occurred while running BirdNET neural analysis. Please verify your connection.');
-        }
-      } finally {
-        if (attempt >= maxAttempts) {
-          setIsAnalyzing(false);
+          // Save to local history if species detected
+          if (result.top_prediction) {
+            const newHistoryItem: HistoryItem = {
+              id: `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+              timestamp: new Date().toISOString(),
+              duration: result.duration,
+              topSpecies: result.top_prediction.common_name,
+              scientificName: result.top_prediction.scientific_name,
+              confidence: result.top_prediction.confidence,
+              audioFileName: filename,
+              diversityScore: result.soundscape_diversity_score,
+              predictionsCount: result.species_detected_count,
+              response: result,
+            };
+            setHistory((prev) => [newHistoryItem, ...prev.slice(0, 49)]);
+          }
+          return; // Success, exit retry loop
+        } catch (err: any) {
+          if (attempt >= maxAttempts) {
+            console.error('Analysis failed:', err);
+            setErrorMessage(err.message || 'Error occurred while running BirdNET neural analysis. Please verify your connection.');
+          }
         }
       }
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
   // Revisit history item
   const handleSelectHistoryItem = (item: HistoryItem) => {
+    setIsAnalyzing(false);
     setAnalysisResult(item.response);
     setCurrentFileName(item.audioFileName || item.topSpecies);
     setAudioBlob(null);
@@ -302,15 +303,19 @@ export function App() {
   };
 
   const handleReset = () => {
+    if (recorderRef.current && isRecording) {
+      handleCancelRecording();
+    }
+    setIsAnalyzing(false);
+    setIsRecording(false);
+    setAnalyser(null);
+    setRecordingSeconds(0);
     setView('recording');
     setAnalysisResult(null);
     setAudioBlob(null);
     setAudioUrl(undefined);
     setCurrentFileName(undefined);
     setErrorMessage(null);
-    if (isRecording) {
-      handleCancelRecording();
-    }
   };
 
   return (
