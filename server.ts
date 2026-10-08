@@ -316,6 +316,17 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`BirdVoice AI server listening on http://0.0.0.0:${PORT} (${IS_DEV ? 'development' : 'production'})`);
+    
+    // Pre-warm BirdNET neural model in memory asynchronously
+    setTimeout(() => {
+      const pyScript = path.join(__dirname, 'backend', 'run_inference.py');
+      const pyProcess = spawn('python3', [pyScript, '--warmup'], { cwd: __dirname });
+      pyProcess.on('close', (code) => {
+        if (code === 0) {
+          console.log('BirdNET neural model pre-warmed and ready.');
+        }
+      });
+    }, 100);
   });
 }
 

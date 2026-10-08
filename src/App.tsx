@@ -218,7 +218,7 @@ export function App() {
       formData.append('longitude', longitude.toString());
     }
 
-    const maxAttempts = 3;
+    const maxAttempts = 6;
     try {
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
@@ -235,14 +235,14 @@ export function App() {
             // If response is the proxy warmup HTML, wait and retry
             if (responseText.includes('<!doctype') || responseText.includes('<html')) {
               if (attempt < maxAttempts) {
-                console.log(`Backend server warmup detected (attempt ${attempt}/${maxAttempts}). Retrying in 1.5s...`);
-                await new Promise((resolve) => setTimeout(resolve, 1500));
+                console.log(`Backend server warmup detected (attempt ${attempt}/${maxAttempts}). Retrying in 1.2s...`);
+                await new Promise((resolve) => setTimeout(resolve, 1200));
                 continue;
               }
             }
             console.error('Non-JSON response received from /api/analyze:', responseText.slice(0, 300));
             throw new Error(
-              `Analysis service is warming up or temporarily unavailable. Please try again in a few seconds.`
+              `Analysis service is initializing. Please try again in a moment.`
             );
           }
 

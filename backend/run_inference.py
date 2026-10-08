@@ -22,13 +22,29 @@ os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
 def main():
     parser = argparse.ArgumentParser(description="BirdNET Audio Analyzer CLI")
-    parser.add_argument("audio_path", help="Path to input audio file")
+    parser.add_argument("audio_path", nargs="?", default="", help="Path to input audio file")
     parser.add_argument("--min-confidence", type=float, default=0.05, help="Minimum confidence threshold (0.01-0.99)")
     parser.add_argument("--lat", type=float, default=None, help="Optional latitude")
     parser.add_argument("--lon", type=float, default=None, help="Optional longitude")
     parser.add_argument("--week", type=int, default=None, help="Optional week (1-52)")
+    parser.add_argument("--warmup", action="store_true", help="Warmup BirdNET model")
     
     args = parser.parse_args()
+
+    if args.warmup:
+        try:
+            from backend.birdnet_service import engine
+            output = {"success": True, "warmup": True, "version": engine.version}
+            print("__BIRDNET_RESULT_JSON_START__")
+            print(json.dumps(output))
+            print("__BIRDNET_RESULT_JSON_END__")
+            sys.exit(0)
+        except Exception as e:
+            output = {"success": False, "error": str(e)}
+            print("__BIRDNET_RESULT_JSON_START__")
+            print(json.dumps(output))
+            print("__BIRDNET_RESULT_JSON_END__")
+            sys.exit(1)
     
     audio_file = pathlib.Path(args.audio_path)
     if not audio_file.is_file():
