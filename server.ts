@@ -9,16 +9,180 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { createServer as createViteServer } from 'vite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// In this environment, nginx listens on 8080 and proxies traffic to port 3000.
-// The Node/Express application MUST always bind to port 3000.
-const PORT = 3000;
+// Port resolution: Railway and production deployments assign dynamic $PORT.
+// Development mode in AI Studio binds to 3000 (reverse-proxied by nginx from 8080).
+function resolvePort(): number {
+  const portArgIdx = process.argv.indexOf('--port');
+  if (portArgIdx !== -1 && process.argv[portArgIdx + 1]) {
+    const parsed = parseInt(process.argv[portArgIdx + 1], 10);
+    if (!isNaN(parsed)) return parsed;
+  }
+
+  if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_SERVICE_ID || process.env.NODE_ENV === 'production') {
+    const envPort = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+    return isNaN(envPort) ? 3000 : envPort;
+  }
+
+  return 3000;
+}
+
+const PORT = resolvePort();
 const IS_DEV = process.env.NODE_ENV !== 'production';
+
+// -------------------------------------------------------------
+// Python Runtime Discovery & Verification
+// -------------------------------------------------------------
+
+interface PythonRuntimeInfo {
+  executable: string;
+  version: string;
+  valid: boolean;
+  error?: string;
+}
+
+let cachedPython: PythonRuntimeInfo | null = null;
+
+function getPythonRuntime(): PythonRuntimeInfo {
+  if (cachedPython && cachedPython.valid) {
+    return cachedPython;
+  }
+
+  const candidates: string[] = [];
+
+  // 1. Explicit user/Railway environment variable configuration
+  if (process.env.PYTHON_PATH) candidates.push(process.env.PYTHON_PATH);
+  if (process.env.PYTHON_BIN) candidates.push(process.env.PYTHON_BIN);
+  if (process.env.PYTHON_EXECUTABLE) candidates.push(process.env.PYTHON_EXECUTABLE);
+
+  // 2. Container virtual environment paths
+  candidates.push(
+    '/opt/venv/bin/python3',
+    '/opt/venv/bin/python',
+    path.join(__dirname, '.venv', 'bin', 'python3'),
+    path.join(__dirname, '.venv', 'bin', 'python'),
+    path.join(__dirname, 'venv', 'bin', 'python3'),
+    path.join(__dirname, 'venv', 'bin', 'python')
+  );
+
+  // 3. System paths
+  candidates.push('python3', 'python', '/usr/bin/python3', '/usr/local/bin/python3');
+
+  const uniqueCandidates = Array.from(new Set(candidates.filter(Boolean)));
+  const failedAttempts: { path: string; reason: string }[] = [];
+
+  for (const candidate of uniqueCandidates) {
+    try {
+      if (candidate.includes('/') || candidate.includes('\\')) {
+        if (!fs.existsSync(candidate)) {
+          failedAttempts.push({ path: candidate, reason: 'File does not exist' });
+          continue;
+        }
+      }
+
+      const proc = spawnSync(candidate, ['-c', 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")'], {
+        encoding: 'utf-8',
+        timeout: 4000,
+      });
+
+      if (proc.status === 0 && proc.stdout) {
+        const ver = proc.stdout.trim();
+        const major = parseInt(ver.split('.')[0], 10);
+        if (major >= 3) {
+          cachedPython = {
+            executable: candidate,
+            version: `Python ${ver}`,
+            valid: true,
+          };
+          console.log(`[BirdVoice AI] Discovered Python runtime: ${candidate} (${cachedPython.version})`);
+          return cachedPython;
+        }
+      } else {
+        const err = proc.error?.message || proc.stderr?.trim() || `Exit code ${proc.status}`;
+        failedAttempts.push({ path: candidate, reason: err });
+      }
+    } catch (err: any) {
+      failedAttempts.push({ path: candidate, reason: err.message });
+    }
+  }
+
+  const diagnostics = failedAttempts.map((f) => `  - ${f.path}: ${f.reason}`).join('\n');
+  const errorMsg = `No functional Python 3 executable was found. Candidate checks:\n${diagnostics}\n` +
+    `Ensure Python 3 is installed in the deployed environment (e.g. via Dockerfile with requirements.txt), or set the PYTHON_PATH environment variable.`;
+
+  console.error(`[BirdVoice AI Error] ${errorMsg}`);
+  cachedPython = {
+    executable: process.env.PYTHON_PATH || 'python3',
+    version: 'Unknown',
+    valid: false,
+    error: errorMsg,
+  };
+  return cachedPython;
+}
+
+function checkBirdNetDependencies(pythonExec: string): { ready: boolean; error?: string } {
+  try {
+    const res = spawnSync(pythonExec, ['-c', 'import birdnetlib, numpy, scipy, soundfile; print("OK")'], {
+      encoding: 'utf-8',
+      timeout: 8000,
+    });
+    if (res.status === 0 && res.stdout.includes('OK')) {
+      return { ready: true };
+    }
+    return {
+      ready: false,
+      error: res.stderr?.trim() || res.stdout?.trim() || `Process exited with code ${res.status}`,
+    };
+  } catch (err: any) {
+    return { ready: false, error: err.message };
+  }
+}
+
+// Pre-warm BirdNET neural model in memory asynchronously
+function warmupBirdNetModel() {
+  const py = getPythonRuntime();
+  if (!py.valid) {
+    console.warn(`[BirdVoice AI Warmup Warning] Skipping model warmup: ${py.error || 'Python not available'}`);
+    return;
+  }
+
+  const pyScript = path.join(__dirname, 'backend', 'run_inference.py');
+  if (!fs.existsSync(pyScript)) {
+    console.warn(`[BirdVoice AI Warmup Warning] Inference script not found at ${pyScript}`);
+    return;
+  }
+
+  console.log(`[BirdVoice AI] Pre-warming BirdNET model with ${py.executable}...`);
+  try {
+    const pyProcess = spawn(py.executable, [pyScript, '--warmup'], {
+      cwd: __dirname,
+      env: {
+        ...process.env,
+        TF_CPP_MIN_LOG_LEVEL: '3',
+        TF_ENABLE_ONEDNN_OPTS: '0',
+      },
+    });
+
+    pyProcess.on('error', (err) => {
+      console.warn(`[BirdVoice AI Warmup Notice] Model warmup spawn notice: ${err.message}. Live requests will still attempt execution.`);
+    });
+
+    pyProcess.on('close', (code) => {
+      if (code === 0) {
+        console.log('[BirdVoice AI] BirdNET neural model pre-warmed and ready in memory.');
+      } else {
+        console.warn(`[BirdVoice AI Warmup Notice] Warmup finished with exit code ${code}.`);
+      }
+    });
+  } catch (err: any) {
+    console.warn(`[BirdVoice AI Warmup Notice] Failed to start warmup process: ${err.message}`);
+  }
+}
 
 const app = express();
 app.use(express.json());
@@ -96,7 +260,15 @@ function runBirdNetInference(
   week?: number
 ): Promise<any> {
   return new Promise((resolve, reject) => {
+    const py = getPythonRuntime();
+    if (!py.valid) {
+      return reject(new Error(`Python environment not ready: ${py.error || 'Executable not found'}`));
+    }
+
     const pyScript = path.join(__dirname, 'backend', 'run_inference.py');
+    if (!fs.existsSync(pyScript)) {
+      return reject(new Error(`Inference runner script not found at ${pyScript}`));
+    }
 
     const args = [pyScript, audioFilePath, '--min-confidence', minConfidence.toString()];
     if (lat !== undefined && !isNaN(lat)) args.push('--lat', lat.toString());
@@ -109,7 +281,7 @@ function runBirdNetInference(
       TF_ENABLE_ONEDNN_OPTS: '0',
     };
 
-    const pyProcess = spawn('python3', args, { env, cwd: __dirname });
+    const pyProcess = spawn(py.executable, args, { env, cwd: __dirname });
 
     let stdoutData = '';
     let stderrData = '';
@@ -151,7 +323,7 @@ function runBirdNetInference(
     });
 
     pyProcess.on('error', (err) => {
-      reject(new Error(`Failed to launch Python BirdNET process: ${err.message}`));
+      reject(new Error(`Failed to execute Python process (${py.executable}): ${err.message}`));
     });
   });
 }
@@ -160,14 +332,27 @@ function runBirdNetInference(
 // API Endpoints
 // -------------------------------------------------------------
 
-// Health check
+// Comprehensive health check for production diagnostics & Railway health monitoring
 app.get('/api/health', (_req: Request, res: Response) => {
-  res.json({
-    status: 'ok',
+  const py = getPythonRuntime();
+  const dep = py.valid ? checkBirdNetDependencies(py.executable) : { ready: false, error: 'Python unavailable' };
+  const isHealthy = py.valid && dep.ready;
+
+  res.status(isHealthy ? 200 : 503).json({
+    status: isHealthy ? 'ok' : 'degraded',
     birdnet: true,
     model: 'BirdNET v2.4 (Cornell Lab of Ornithology)',
     species_catalog_count: 6521,
     inference_engine: 'TensorFlow Lite + XNNPACK',
+    port: PORT,
+    environment: IS_DEV ? 'development' : 'production',
+    python: {
+      available: py.valid,
+      executable: py.executable,
+      version: py.version,
+      dependencies_installed: dep.ready,
+      error: py.error || dep.error,
+    },
     audio_formats_supported: ['wav', 'mp3', 'm4a', 'ogg', 'flac', 'webm']
   });
 });
@@ -203,6 +388,15 @@ app.get('/api/species/:scientificName', async (req: Request, res: Response) => {
   const sciName = decodeURIComponent(req.params.scientificName);
   const commonName = req.query.common_name ? String(req.query.common_name) : undefined;
   
+  const py = getPythonRuntime();
+  if (!py.valid) {
+    return res.json({
+      scientific_name: sciName,
+      common_name: commonName || sciName,
+      description: `Avian vocalizer documented in the BirdNET bioacoustic archive.`
+    });
+  }
+
   const pyScript = `
 import json, sys
 sys.path.insert(0, '${__dirname}')
@@ -211,20 +405,36 @@ info = get_species_info('${sciName.replace(/'/g, "\\'")}', '${(commonName || sci
 print(json.dumps(info))
 `;
   
-  const py = spawn('python3', ['-c', pyScript], { cwd: __dirname });
-  let out = '';
-  py.stdout.on('data', (d) => { out += d.toString(); });
-  py.on('close', () => {
-    try {
-      res.json(JSON.parse(out.trim()));
-    } catch {
+  try {
+    const pyProcess = spawn(py.executable, ['-c', pyScript], { cwd: __dirname });
+    let out = '';
+    pyProcess.stdout.on('data', (d) => { out += d.toString(); });
+    pyProcess.on('error', (err) => {
+      console.warn(`Species info query notice (${err.message})`);
       res.json({
         scientific_name: sciName,
         common_name: commonName || sciName,
         description: `Avian vocalizer documented in the BirdNET bioacoustic archive.`
       });
-    }
-  });
+    });
+    pyProcess.on('close', () => {
+      try {
+        res.json(JSON.parse(out.trim()));
+      } catch {
+        res.json({
+          scientific_name: sciName,
+          common_name: commonName || sciName,
+          description: `Avian vocalizer documented in the BirdNET bioacoustic archive.`
+        });
+      }
+    });
+  } catch {
+    res.json({
+      scientific_name: sciName,
+      common_name: commonName || sciName,
+      description: `Avian vocalizer documented in the BirdNET bioacoustic archive.`
+    });
+  }
 });
 
 // Audio analysis endpoint
@@ -317,16 +527,8 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`BirdVoice AI server listening on http://0.0.0.0:${PORT} (${IS_DEV ? 'development' : 'production'})`);
     
-    // Pre-warm BirdNET neural model in memory asynchronously
-    setTimeout(() => {
-      const pyScript = path.join(__dirname, 'backend', 'run_inference.py');
-      const pyProcess = spawn('python3', [pyScript, '--warmup'], { cwd: __dirname });
-      pyProcess.on('close', (code) => {
-        if (code === 0) {
-          console.log('BirdNET neural model pre-warmed and ready.');
-        }
-      });
-    }, 100);
+    // Pre-warm BirdNET neural model in memory asynchronously with diagnostic error traps
+    setTimeout(warmupBirdNetModel, 150);
   });
 }
 

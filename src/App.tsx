@@ -8,6 +8,7 @@ import { SamplesModal } from './components/SamplesModal';
 import { AboutModal } from './components/AboutModal';
 import { AudioRecorderService } from './utils/audio';
 import { AnalysisResponse, HistoryItem, SampleRecording } from './types/birdnet';
+import { getApiUrl, checkBackendHealth } from './utils/api';
 
 export function App() {
   const [view, setView] = useState<'recording' | 'results'>('recording');
@@ -79,7 +80,8 @@ export function App() {
 
   // Load samples from backend
   useEffect(() => {
-    fetch('/api/samples')
+    checkBackendHealth();
+    fetch(getApiUrl('/api/samples'))
       .then((res) => res.json())
       .then((data) => {
         if (data.samples && Array.isArray(data.samples)) {
@@ -192,8 +194,10 @@ export function App() {
     setCurrentFileName(sample.name);
 
     try {
-      const audioRes = await fetch(sample.audio_url);
-      if (!audioRes.ok) throw new Error('Failed to load sample audio from server.');
+      const sampleUrl = getApiUrl(sample.audio_url);
+      console.log(`[BirdVoice] Fetching sample audio from: ${sampleUrl}`);
+      const audioRes = await fetch(sampleUrl);
+      if (!audioRes.ok) throw new Error(`Failed to load sample audio from server (${audioRes.status}).`);
       const blob = await audioRes.blob();
       setAudioBlob(blob);
       setAudioUrl(sample.audio_url);
@@ -207,6 +211,11 @@ export function App() {
 
   // Core API call to /api/analyze
   const processAudio = async (blob: Blob, filename: string) => {
+    const targetApiUrl = getApiUrl('/api/analyze');
+    console.log('[BirdVoice] Detection started');
+    console.log(`[BirdVoice] API URL: ${targetApiUrl}`);
+    console.log(`[BirdVoice] Audio captured: ${filename} (${(blob.size / 1024).toFixed(1)} KB, type: ${blob.type || 'unknown'})`);
+
     setIsAnalyzing(true);
     setErrorMessage(null);
 
@@ -222,10 +231,13 @@ export function App() {
     try {
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-          const response = await fetch('/api/analyze', {
+          console.log(`[BirdVoice] Sending audio... (Attempt ${attempt}/${maxAttempts})`);
+          const response = await fetch(targetApiUrl, {
             method: 'POST',
             body: formData,
           });
+
+          console.log(`[BirdVoice] Response status: ${response.status} ${response.statusText}`);
 
           const responseText = await response.text();
           let result: any = null;
@@ -235,7 +247,7 @@ export function App() {
             // If response is the proxy warmup HTML, wait and retry
             if (responseText.includes('<!doctype') || responseText.includes('<html')) {
               if (attempt < maxAttempts) {
-                console.log(`Backend server warmup detected (attempt ${attempt}/${maxAttempts}). Retrying in 1.2s...`);
+                console.log(`[BirdVoice] Model loading... Backend server warmup detected (attempt ${attempt}/${maxAttempts}). Retrying in 1.2s...`);
                 await new Promise((resolve) => setTimeout(resolve, 1200));
                 continue;
               }
@@ -252,7 +264,11 @@ export function App() {
             );
           }
 
+          console.log('[BirdVoice] Model loaded');
+          console.log('[BirdVoice] BirdNET inference started');
           const analysisResult: AnalysisResponse = result;
+          console.log(`[BirdVoice] BirdNET inference completed: ${result.species_detected_count} species detected in ${result.processing_time}s`);
+
           setAnalysisResult(analysisResult);
           setView('results');
 

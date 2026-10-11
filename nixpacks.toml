@@ -1,0 +1,20 @@
+# Fallback configuration if Railway service is configured to use Nixpacks instead of Dockerfile
+[phases.setup]
+nixPkgs = ["nodejs_22", "python311", "ffmpeg", "libsndfile"]
+
+[phases.install]
+cmds = [
+  "python3 -m venv /opt/venv",
+  "/opt/venv/bin/pip install --no-cache-dir --upgrade pip",
+  "/opt/venv/bin/pip install --no-cache-dir -r requirements.txt",
+  "npm install"
+]
+
+[phases.build]
+cmds = [
+  "npm run build",
+  "/opt/venv/bin/python backend/run_inference.py --warmup"
+]
+
+[start]
+cmd = "npm start"
