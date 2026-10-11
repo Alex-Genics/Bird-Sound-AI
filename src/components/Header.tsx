@@ -34,9 +34,6 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="text-base font-semibold tracking-tight text-[#f1f7f2]">
                 BirdVoice AI
               </span>
-              <span className="text-[11px] font-mono uppercase tracking-wider text-[#10b981]">
-                BirdNET v2.4
-              </span>
             </div>
             <p className="text-xs text-[#708c79]">
               Bioacoustic avian vocalization identification

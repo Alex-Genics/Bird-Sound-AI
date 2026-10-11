@@ -24,9 +24,15 @@ function resolvePort(): number {
     if (!isNaN(parsed)) return parsed;
   }
 
-  if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_SERVICE_ID || process.env.NODE_ENV === 'production') {
-    const envPort = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-    return isNaN(envPort) ? 3000 : envPort;
+  // AI Studio development environment has an internal nginx proxy (8080 -> 3000)
+  if (process.env.APPLET_ID && process.env.NODE_ENV !== 'production') {
+    return 3000;
+  }
+
+  // In Railway or production deployments, listen to Railway's assigned PORT
+  if (process.env.PORT) {
+    const envPort = parseInt(process.env.PORT, 10);
+    if (!isNaN(envPort)) return envPort;
   }
 
   return 3000;
