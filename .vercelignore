@@ -1,0 +1,24 @@
+# Vercel Ignore File for BirdVoice AI Frontend Deployment
+# Exclude Python backend and Railway server files from Vercel's build environment
+
+# Backend services & runtime (hosted on Railway)
+backend/
+server.ts
+tmp_uploads/
+
+# Railway container & deployment configuration
+Dockerfile
+.dockerignore
+railway.json
+railway.toml
+nixpacks.toml
+RAILWAY_DEPLOYMENT.md
+
+# Python virtual environments & bytecode
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.python-version

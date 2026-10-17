@@ -200,7 +200,7 @@ export function App() {
       if (!audioRes.ok) throw new Error(`Failed to load sample audio from server (${audioRes.status}).`);
       const blob = await audioRes.blob();
       setAudioBlob(blob);
-      setAudioUrl(sample.audio_url);
+      setAudioUrl(sampleUrl);
 
       await processAudio(blob, sample.sample_file);
     } catch (err: any) {

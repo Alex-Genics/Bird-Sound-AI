@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Play, Pause, RotateCcw, Volume2, Sparkles } from 'lucide-react';
 import { SpectrogramData, TimelineSegment } from '../types/birdnet';
 import { formatTime } from '../utils/audio';
+import { getApiUrl } from '../utils/api';
 
 interface SpectrogramViewerProps {
   spectrogram: SpectrogramData;
@@ -33,7 +34,7 @@ export const SpectrogramViewer: React.FC<SpectrogramViewerProps> = ({
       setInternalAudioUrl(url);
       return () => URL.revokeObjectURL(url);
     } else if (audioUrl) {
-      setInternalAudioUrl(audioUrl);
+      setInternalAudioUrl(getApiUrl(audioUrl));
     }
   }, [audioBlob, audioUrl]);
 

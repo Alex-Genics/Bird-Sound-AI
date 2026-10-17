@@ -8,14 +8,14 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PORT=3000
 
 # Install system dependencies:
-# - python3, python3-pip, python3-venv for Python runtime
+# - python3.11, python3.11-venv, python3-pip for pinned Python 3.11 runtime
 # - ffmpeg for audio transcoding (WAV, MP3, M4A, OGG, FLAC, WEBM) to 48kHz WAV
 # - libsndfile1 for soundfile C audio I/O
 # - ca-certificates for secure HTTPS
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
+    python3.11 \
+    python3.11-venv \
     python3-pip \
-    python3-venv \
     ffmpeg \
     libsndfile1 \
     ca-certificates \
@@ -23,17 +23,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# 1. Setup Python virtual environment & install Python dependencies (cached layer)
-RUN python3 -m venv /opt/venv
+# 1. Setup Python 3.11 virtual environment & install Python dependencies (cached layer)
+RUN python3.11 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHON_PATH="/opt/venv/bin/python3"
 
-COPY requirements.txt ./
+COPY backend/requirements.txt ./backend/
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r backend/requirements.txt
 
 # 2. Install Node.js dependencies (cached layer)
-COPY package.json ./
+COPY package.json package-lock.json* ./
 RUN npm install
 
 # 3. Copy application source code

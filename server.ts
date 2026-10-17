@@ -69,6 +69,7 @@ function getPythonRuntime(): PythonRuntimeInfo {
   // 2. Container virtual environment paths
   candidates.push(
     '/opt/venv/bin/python3',
+    '/opt/venv/bin/python3.11',
     '/opt/venv/bin/python',
     path.join(__dirname, '.venv', 'bin', 'python3'),
     path.join(__dirname, '.venv', 'bin', 'python'),
@@ -77,7 +78,7 @@ function getPythonRuntime(): PythonRuntimeInfo {
   );
 
   // 3. System paths
-  candidates.push('python3', 'python', '/usr/bin/python3', '/usr/local/bin/python3');
+  candidates.push('python3.11', 'python3', 'python', '/usr/bin/python3.11', '/usr/bin/python3', '/usr/local/bin/python3');
 
   const uniqueCandidates = Array.from(new Set(candidates.filter(Boolean)));
   const failedAttempts: { path: string; reason: string }[] = [];
@@ -119,7 +120,7 @@ function getPythonRuntime(): PythonRuntimeInfo {
 
   const diagnostics = failedAttempts.map((f) => `  - ${f.path}: ${f.reason}`).join('\n');
   const errorMsg = `No functional Python 3 executable was found. Candidate checks:\n${diagnostics}\n` +
-    `Ensure Python 3 is installed in the deployed environment (e.g. via Dockerfile with requirements.txt), or set the PYTHON_PATH environment variable.`;
+    `Ensure Python 3 is installed in the deployed environment (e.g. via Dockerfile with backend/requirements.txt), or set the PYTHON_PATH environment variable.`;
 
   console.error(`[BirdVoice AI Error] ${errorMsg}`);
   cachedPython = {
@@ -191,6 +192,18 @@ function warmupBirdNetModel() {
 }
 
 const app = express();
+
+// Enable CORS for Vercel and cross-origin frontend requests
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
